@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人事制度 支持率投票 - </title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif; background: #f5f5f5; color: #1a1a1a; font-size: 15px; line-height: 1.6; }
+  .header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 16px 20px; position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .header h1 { font-size: 16px; font-weight: 600; }
+  .header-meta { display: flex; align-items: center; gap: 12px; }
+  .vote-count { font-size: 13px; color: #666; }
+  .submitted-badge { font-size: 12px; background: #E1F5EE; color: #085041; border: 1px solid #1D9E75; border-radius: 20px; padding: 3px 10px; display: none; }
+  .submitted-badge.visible { display: inline-block; }
+  .container { max-width: 720px; margin: 0 auto; padding: 20px 16px 80px; }
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 15px; font-weight: 600; padding: 10px 14px; background: #fff; border-radius: 10px; border-left: 3px solid #1D9E75; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .item { background: #fff; border: 1px solid #e8e8e8; border-radius: 10px; padding: 14px; margin-bottom: 8px; }
+  .item-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; cursor: pointer; }
+  .item-label { font-size: 14px; font-weight: 500; flex: 1; }
+  .toggle-btn { font-size: 12px; color: #999; background: none; border: none; cursor: pointer; white-space: nowrap; padding: 2px 4px; flex-shrink: 0; }
+  .item-desc { font-size: 13px; color: #555; line-height: 1.65; margin: 10px 0; padding: 10px 12px; background: #f8f8f8; border-radius: 8px; }
+  .vote-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .vote-btn { padding: 6px 14px; font-size: 13px; border-radius: 20px; border: 1px solid #ddd; background: #fff; cursor: pointer; color: #555; transition: all 0.15s; }
+  .vote-btn:hover { background: #f0f0f0; }
+  .vote-btn.active-for { background: #E1F5EE; border-color: #1D9E75; color: #085041; font-weight: 500; }
+  .vote-btn.active-neutral { background: #FAEEDA; border-color: #BA7517; color: #412402; font-weight: 500; }
+  .vote-btn.active-against { background: #FCEBEB; border-color: #A32D2D; color: #501313; font-weight: 500; }
+  .bar-wrap { flex: 1; min-width: 80px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; display: flex; }
+  .bar-for { background: #1D9E75; height: 100%; transition: width 0.3s; }
+  .bar-neutral { background: #EF9F27; height: 100%; transition: width 0.3s; }
+  .bar-against { background: #E24B4A; height: 100%; transition: width 0.3s; }
+  .bar-pct { font-size: 11px; color: #999; min-width: 28px; text-align: right; }
+  .footer { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #e0e0e0; padding: 12px 20px; display: flex; gap: 10px; align-items: center; justify-content: center; }
+  .submit-btn { padding: 10px 28px; font-size: 14px; font-weight: 600; border-radius: 24px; border: none; background: #1D9E75; color: #fff; cursor: pointer; transition: background 0.15s; }
+  .submit-btn:hover { background: #0F6E56; }
+  .submit-btn:disabled { background: #aaa; cursor: not-allowed; }
+  .progress-text { font-size: 13px; color: #888; }
+  .toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; font-size: 13px; padding: 10px 20px; border-radius: 24px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 200; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>人事制度 支持率投票</h1>
+  <div class="header-meta">
+    <span class="vote-count" id="voteCount">現在 0 件の投票</span>
+    <span class="submitted-badge" id="submittedBadge">✓ 送信済み</span>
+  </div>
+</div>
+
+<div class="container" id="app"></div>
+
+<div class="footer">
+  <span class="progress-text" id="progressText">0 / 22 項目に投票済み</span>
+  <button class="submit-btn" id="submitBtn" onclick="submitVotes()">投票を送信</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxgORhnQ32skUqteEwZFXBky7wUv9suznHcxv4402T43w07-Kvk2UtokvkAaRbCKLljog/exec";
+const LS_KEY = "homerun_votes_v1";
+
+const SECTIONS = [
+  {
+    title: "1. 制度改定の目的",
+    items: [
+      { label: "安心・安全な環境整備を優先する方針", desc: "給与・評価の土台を整えることで、まず生活の安心感を確保する。「守り」を固めてから挑戦できる環境を目指す。" },
+      { label: "挑戦・フルスイングを奨励する姿勢", desc: "三振を恐れず大胆に挑戦する行動を会社として歓迎・評価する。失敗しても挑んだこと自体をポジティブに見る文化づくり。" },
+      { label: "MVV体現が評価に直結する仕組み", desc: "ミッション・ビジョン・バリュー（MVV）に沿った行動そのものを評価軸にする。「頑張る人が報われる」ことを制度で担保する。" }
+    ]
+  },
+  {
+    title: "2. 賞与（インセンティブ）",
+    items: [
+      { label: "全店売上の昨対比で係数が決まる設計", desc: "個人の店舗だけでなく「全店合計の昨年比」で賞与係数が変わる。全員で業績を上げれば全員が恩恵を受ける連帯設計。" },
+      { label: "業績95%未満の最低係数（1等級: 0.3）", desc: "全店売上が昨対95%を下回ると、1等級の係数は0.3まで下がる。業績不振時の賞与は大きく圧縮される設計。" },
+      { label: "業績105%以上の最高係数（4等級: 4.0）", desc: "全店売上が昨対105%以上なら、4等級の係数は4.0。高業績時に上位等級は大きく報われる設計。" },
+      { label: "等級差による係数の格差幅", desc: "同じ業績でも1等級と4等級では係数が最大4倍以上異なる（例: 105%超で1等級1.5 vs 4等級4.0）。等級による報酬差が大きい。" }
+    ]
+  },
+  {
+    title: "3. 基本給テーブル（等級×年齢級）",
+    items: [
+      { label: "年齢とともに基本給が上がる年齢給の仕組み", desc: "毎年4月2日時点の年齢に応じて基本給が自動的に上がる。長く勤めるほど生活水準が上がる安心感を提供。" },
+      { label: "等級が上がると基本給も上がる構造", desc: "年齢給に加え、等級が1つ上がると基本給テーブル自体が高い水準に切り替わる。頑張りが給与に直結する仕組み。" },
+      { label: "25歳時点の基本給水準（270,000〜293,000円）", desc: "25歳時点で1等級27万円〜4等級29.3万円。等級による差は約2.3万円。若いうちからの等級昇格の価値を示す。" },
+      { label: "40歳・50歳時点の基本給水準", desc: "40歳: 1等級33万〜4等級40.7万（差7.7万）。50歳: 1等級36.3万〜4等級43.3万（差7万）。年齢が上がるほど等級差が広がる。" },
+      { label: "移行調整給（段階的な新制度への移行）", desc: "旧制度から新制度への切り替えによる給与変動を緩和するための経過措置。2026年中は100%、2027年中は50%の補填が入る。" }
+    ]
+  },
+  {
+    title: "4. 昇格・降格条件",
+    items: [
+      { label: "P評価（定量）＋V評価（MVV体現）の2軸評価", desc: "数字で測れる業績（P評価）と、MVVに沿った行動・姿勢（V評価）の平均で等級を判定。数字だけでなく行動面も評価される。" },
+      { label: "直近2期・3期の平均で判定する仕組み", desc: "一発勝負ではなく、直近2期または3期の平均点で昇降格を判断。継続的な実力を見る設計。" },
+      { label: "1→2等級の昇格基準（直近2期平均2.0以上）", desc: "直近2期平均2.0以上、または3期平均1.8以上で1等級から2等級へ昇格できる。入り口のハードルは比較的低め。" },
+      { label: "2→3等級の昇格基準（直近2期平均2.3以上）", desc: "直近2期平均2.3以上、または3期平均2.1以上が必要。1→2等級より0.3高い水準が求められる。" },
+      { label: "3→4等級の昇格基準（直近2期平均2.6以上）", desc: "直近2期平均2.6以上、または3期平均2.4以上。最上位への昇格は最も高い基準が設定されている。" },
+      { label: "降格ラインの設定（例：4→3等級: 2.0以下）", desc: "評価が一定以下になると等級が下がる。4→3等級は直近2期平均2.0以下、3→2等級は1.8以下が降格ライン。" }
+    ]
+  },
+  {
+    title: "5. 目標難易度評価",
+    items: [
+      { label: "難易度に応じて評価倍率（係数）を設定する考え方", desc: "目標設定時に「この目標はどれくらい難しいか」を係数として設定する。150kmの速球を打つ挑戦と、遅い球を打つ挑戦は価値が違う、という考え方。" },
+      { label: "同じ達成率でも難しい目標の方が高評価になる仕組み", desc: "達成率が同じでも、難易度係数が高い目標に取り組んだ人の方が最終評価が高くなる。安全な目標より挑戦的な目標を選ぶことが得になる設計。" }
+    ]
+  },
+  {
+    title: "6. 理想の店長像",
+    items: [
+      { label: "MVVの体現者であることを最重要とする定義", desc: "のMVVを誰よりも深く理解し、自らの行動と結果で体現できる人物像を店長の第一条件とする。" },
+      { label: "弱点克服・オペレーション改善へのコミット", desc: "自組織の課題から目を背けず、オペレーションやサービスを粘り強く改善し続ける姿勢を求める。" },
+      { label: "業績貢献と組織貢献の両立要件", desc: "数字へのコミットメントと、チーム・組織への貢献を「どちらか」ではなく「両方」実現することを求める。" }
+    ]
+  }
+];
+
+// クライアントIDを生成（localStorageに保存）
+function getClientId() {
+  let id = localStorage.getItem("homerun_client_id");
+  if (!id) {
+    id = "client_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem("homerun_client_id", id);
+  }
+  return id;
+}
+
+// 状態管理
+const state = {};
+let openMap = {};
+SECTIONS.forEach((s, si) => {
+  s.items.forEach((_, ii) => {
+    state[`${si}-${ii}`] = null;
+  });
+});
+
+// localStorageから復元
+function loadFromStorage() {
+  try {
+    const saved = localStorage.getItem(LS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      Object.entries(parsed).forEach(([k, v]) => {
+        if (k in state) state[k] = v;
+      });
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function saveToStorage() {
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
+
+function vote(si, ii, type) {
+  const key = `${si}-${ii}`;
+  state[key] = (state[key] === type) ? null : type;
+  saveToStorage();
+  render();
+}
+
+function toggleDesc(si, ii) {
+  const key = `${si}-${ii}`;
+  openMap[key] = !openMap[key];
+  render();
+}
+
+function votedCount() {
+  return Object.values(state).filter(v => v !== null).length;
+}
+
+function showToast(msg, duration = 2500) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), duration);
+}
+
+async function fetchVoteCount() {
+  try {
+    const res = await fetch(GAS_URL);
+    const data = await res.json();
+    document.getElementById("voteCount").textContent = `現在 ${data.count} 件の投票`;
+  } catch(e) {}
+}
+
+async function submitVotes() {
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "送信中...";
+  try {
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ clientId: getClientId(), votes: state })
+    });
+    const data = await res.json();
+    if (data.status === "ok") {
+      const msg = data.updated ? "✓ 投票を更新しました" : "✓ 投票を送信しました";
+      showToast(msg);
+      document.getElementById("submittedBadge").classList.add("visible");
+      localStorage.setItem("homerun_submitted", "1");
+      await fetchVoteCount();
+    } else {
+      showToast("⚠ エラーが発生しました");
+    }
+  } catch(e) {
+    showToast("⚠ 送信に失敗しました。接続を確認してください。");
+  }
+  btn.disabled = false;
+  btn.textContent = "投票を送信";
+}
+
+function render() {
+  const app = document.getElementById("app");
+  const count = votedCount();
+  const total = Object.keys(state).length;
+  document.getElementById("progressText").textContent = `${count} / ${total} 項目に投票済み`;
+
+  let html = "";
+  SECTIONS.forEach((s, si) => {
+    html += `<div class="section">`;
+    html += `<div class="section-title">${s.title}</div>`;
+    s.items.forEach((item, ii) => {
+      const key = `${si}-${ii}`;
+      const v = state[key];
+      const isOpen = !!openMap[key];
+      html += `<div class="item">
+        <div class="item-header" onclick="toggleDesc(${si},${ii})">
+          <div class="item-label">${item.label}</div>
+          <button class="toggle-btn">${isOpen ? "▲ 閉じる" : "▼ 説明"}</button>
+        </div>
+        ${isOpen ? `<div class="item-desc">${item.desc}</div>` : ""}
+        <div class="vote-row">
+          <button class="vote-btn${v === 'for' ? ' active-for' : ''}" onclick="vote(${si},${ii},'for')">👍 賛成</button>
+          <button class="vote-btn${v === 'neutral' ? ' active-neutral' : ''}" onclick="vote(${si},${ii},'neutral')">🤔 中立</button>
+          <button class="vote-btn${v === 'against' ? ' active-against' : ''}" onclick="vote(${si},${ii},'against')">👎 反対</button>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  app.innerHTML = html;
+}
+
+// 初期化
+const wasSubmitted = loadFromStorage();
+if (localStorage.getItem("homerun_submitted") === "1") {
+  document.getElementById("submittedBadge").classList.add("visible");
+}
+fetchVoteCount();
+render();
+</script>
+</body>
+</html>
